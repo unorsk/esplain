@@ -73,7 +73,13 @@ Unknown shapes render as `box`, and `npm run check` flags them. To add a shape, 
    - The dimension drawing is the authority for geometry. Rendered pinouts can be off: the FireBeetle 2 hole rows measured 23.6 mm apart on the render, while the drawing says 22.86 mm (0.9").
    - The schematic is the authority for what parts are, LED colours, pull-ups and series resistors, power paths and protection. It turns "unidentified" parts into explained ones.
    - Rasterise a PDF with `pdftoppm -r 600 -png file.pdf out`, then crop the regions you need. For long manuals, render a contact sheet of thumbnails first (`pdftoppm -r 30`) to find the pinout, dimension and schematic pages.
-   - Vendor manuals are often assembled from other boards' pages. The FireBeetle 2 ESP32-E manual's GDI pin table is the Beetle ESP32-C3's. Cross-check every table against the board's own example code and the Arduino variant before using it, and say in the description where a mapping came from.
+   - Vendor manuals are often assembled from other boards' pages. The FireBeetle 2 ESP32-E manual's GDI pin table is the Beetle ESP32-C3's, and its USB circuit shows a CH9102F while the V1.0 schematic and board use a CH340K. Cross-check every table against the schematic for the revision printed on the board (and the example code and Arduino variant), and say in the description where a mapping came from.
+   - Read the whole schematic, not only the pin tables. Most of the useful caveats live in the power and support circuits:
+     - what an `EN` pin really drives (the ESP32-E's is the regulator enable)
+     - ADC pins tied to a battery divider
+     - button pull-ups that don't exist
+     - missing reverse-polarity protection
+     - which test pads connect where
    - For pin facts, also use the board's Arduino variant `pins_arduino.h` (`raw.githubusercontent.com/espressif/arduino-esp32/master/variants/<BOARD>/pins_arduino.h`) and the ESP-IDF docs (`raw.githubusercontent.com/espressif/esp-idf/master/docs/en/api-reference/peripherals/gpio/<chip>.inc`).
 2. **Check existing vocabulary** so the device compares cleanly with the others:
    ```sh
