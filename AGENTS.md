@@ -33,7 +33,7 @@ The full schema is in `db/schema.sql`. Natural keys are used everywhere (the dev
 | `specs` | spec value | PK `(device, key)`; `key` → `spec_keys.key`; `value` = display text, `num` = number in `spec_keys.unit` |
 | `markings` | silkscreen text | drawn on the body surface (`side`, `x`, `y`, `size` = cap height in mm, `rotation`, `align` = `start`/`center`/`end` in reading direction) |
 | `spec_keys` | comparable spec | shared by all devices; `hint` says what to put in it |
-| `function_categories` | tag colour group | power, gnd, gpio, digital, analog, i2c, uart, spi, sdio, usb, jtag, lp, boot, reset, other |
+| `function_categories` | tag colour group | power, gnd, gpio, digital, analog, i2c, uart, spi, sdio, usb, jtag, lp (LP/RTC GPIO), touch, dac, boot, reset, other |
 
 Deleting a device cascades to all of its rows, so a device script can start with `DELETE FROM devices WHERE slug = '…'` and be re-run as often as needed.
 
@@ -56,11 +56,12 @@ Deleting a device cascades to all of its rows, so a device script can start with
 | `button` | top-pressed SMD tact switch | `w × l × h` | `cap_ratio` (0.6), `cap_color`, `body_color` |
 | `side_button` | side-pressed tact switch | `w × l × h`, actuator points +y at rotation 0 | `reach` (mm the actuator sticks out, 0.8), `cap_color`, `body_color` |
 | `led` | 0402/0603/0805 LED | `w × l × h` | `color`, `lit: false` when the lit colour is unknown (renders an unlit lens) |
-| `shield` | RF can / module | `w × l × h` | `label` (first line is drawn as a heading; lines separated by `\n`), `label_bg` (omit for bare metal), `label_fg`, `label_inset` |
+| `shield` | RF can soldered to the board | `w × l × h` | `label` (first line is drawn as a heading; lines separated by `\n`), `label_bg` (omit for bare metal), `label_fg`, `label_inset` |
+| `module` | radio module (ESP32-WROOM style): castellated module PCB, metal can, PCB antenna | `w × l × h` (total height), antenna end faces +y at rotation 0 | `antenna_l` (6), `pcb_h` (0.8), `pcb_color`, `side_pads` (14), `end_pads` (10), `can_w`, `can_l`, `antenna_turns`, plus the `shield` label props |
 | `ufl` | U.FL / IPEX connector | `w × l × h` | |
 | `jst` | wire-to-board connector (JST PH style) | `w` along the pin row × `l` depth × `h`, opening faces +y at rotation 0 | `pins` (2), `pitch` (2.0), `lead` (mm of lead behind the housing), `color` |
 | `fpc` | FPC/FFC ZIF connector | `w × l × h`, contacts on the +y side at rotation 0 | `pins` (18), `pitch` (0.5), `color`, `slot_color` |
-| `chip` | IC package | `w × l × h` | `text`, `text_color`, `color` |
+| `chip` | IC package | `w × l × h` (body) | `text`, `text_color`, `color`; `pins` per side with `pitch` (1.27) draws gull-wing leads on the ±y sides (`pins_axis: "x"` for ±x) |
 | `antenna` | PCB meander antenna (copper under the soldermask) | `w × l`, `h` ≈ 0.035 | `turns` (5), `trace` (mm, 0.5) |
 | `box` | anything else (crystals, diodes, inductors) | `w × l × h` | `color`, `metalness`, `roughness` |
 
@@ -71,7 +72,14 @@ Unknown shapes render as `box`, and `npm run check` flags them. To add a shape, 
 1. **Gather sources.** Ask the user for the vendor pinout image, the product page specs and photos rather than doing lengthy web searches. Ask for the **dimension drawing and the schematic up front**; vendor download hosts are often unreachable from a cloud session, but the user can attach them.
    - The dimension drawing is the authority for geometry. Rendered pinouts can be off: the FireBeetle 2 hole rows measured 23.6 mm apart on the render, while the drawing says 22.86 mm (0.9").
    - The schematic is the authority for what parts are, LED colours, pull-ups and series resistors, power paths and protection. It turns "unidentified" parts into explained ones.
-   - Rasterise a PDF with `pdftoppm -r 600 -png file.pdf out`, then crop the regions you need.
+   - Rasterise a PDF with `pdftoppm -r 600 -png file.pdf out`, then crop the regions you need. For long manuals, render a contact sheet of thumbnails first (`pdftoppm -r 30`) to find the pinout, dimension and schematic pages.
+   - Vendor manuals are often assembled from other boards' pages. The FireBeetle 2 ESP32-E manual's GDI pin table is the Beetle ESP32-C3's, and its USB circuit shows a CH9102F while the V1.0 schematic and board use a CH340K. Cross-check every table against the schematic for the revision printed on the board (and the example code and Arduino variant), and say in the description where a mapping came from.
+   - Read the whole schematic, not only the pin tables. Most of the useful caveats live in the power and support circuits:
+     - what an `EN` pin really drives (the ESP32-E's is the regulator enable)
+     - ADC pins tied to a battery divider
+     - button pull-ups that don't exist
+     - missing reverse-polarity protection
+     - which test pads connect where
    - For pin facts, also use the board's Arduino variant `pins_arduino.h` (`raw.githubusercontent.com/espressif/arduino-esp32/master/variants/<BOARD>/pins_arduino.h`) and the ESP-IDF docs (`raw.githubusercontent.com/espressif/esp-idf/master/docs/en/api-reference/peripherals/gpio/<chip>.inc`).
 2. **Check existing vocabulary** so the device compares cleanly with the others:
    ```sh
@@ -91,6 +99,7 @@ Unknown shapes render as `box`, and `npm run check` flags them. To add a shape, 
 ### Conventions
 
 - `slug`: `vendor-model`, lowercase, hyphenated (`seeed-xiao-esp32c5`, `dfrobot-firebeetle2-esp32c6`).
+- Boards built on a radio module (WROOM, WROVER, MINI) use one `module` part for it. Put the module name in `specs.soc` together with the chip inside, e.g. `ESP32-WROOM-32E (ESP32-D0WD-V3)`.
 - Part `key`: unique within the device and stable, because URLs use it (`#/d/<slug>/<key>`). For pins, use the silkscreen label (`D0`, `5V`); when that label is long (`5/A4/LP_TX`), use `IO<gpio>` (`IO5`). When a label repeats, add a suffix: `GND.back`, `3V3.2`, `NC.1`. For components, use snake_case (`usb`, `btn_boot`, `led_user`).
 - `label`: exactly what is printed on the board, or the vendor's name for it. When the front and back print differ, use the more descriptive one (FireBeetle prints `23` on the front and `23/SCK` on the back).
 - Not-connected pins are still pins: give them the `NC` function (category `other`) and say so in the description.
