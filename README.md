@@ -20,7 +20,7 @@ Devices are rows in `db/esplain.db` (SQLite, schema managed by dbmate). The work
 To see readable database diffs locally, map the `sqlite3` diff driver once:
 
 ```sh
-git config diff.sqlite3.textconv 'sh -c "sqlite3 \"\$0\" .dump"'
+git config diff.sqlite3.textconv "sh -c 'sqlite3 \"\$0\" .dump'"
 ```
 
 ## Deploy
