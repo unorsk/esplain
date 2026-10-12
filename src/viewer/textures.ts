@@ -24,7 +24,6 @@ export function silkTexture(body: Body, markings: Marking[], side: Side): THREE.
   canvas.height = Math.round(body.length * s);
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = body.silkColor;
-  ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   for (const m of items) {
     // The bottom side is drawn as seen from below, flipped left-right.
@@ -34,6 +33,7 @@ export function silkTexture(body: Body, markings: Marking[], side: Side): THREE.
     ctx.translate(px, py);
     ctx.rotate((-m.rotation * Math.PI) / 180);
     ctx.font = `600 ${(m.size / 0.72) * s}px ${FONT}`;
+    ctx.textAlign = m.align === "start" ? "left" : m.align === "end" ? "right" : "center";
     ctx.fillText(m.text, 0, 0);
     ctx.restore();
   }

@@ -37,10 +37,15 @@ function check(d: Device): [string[], string[]] {
   for (const p of d.parts) {
     if (!(SHAPES as readonly string[]).includes(p.shape)) err.push(`${name(p)}: unknown shape "${p.shape}"`);
     if (p.w <= 0 || p.l <= 0) err.push(`${name(p)}: w and l must be > 0`);
-    if (p.kind === "component" && p.h <= 0) err.push(`${name(p)}: components need h > 0`);
+    const flat = p.shape === "pad" || p.shape === "hole" || p.shape === "castellated";
+    if (p.kind === "component" && p.h <= 0 && !flat) err.push(`${name(p)}: components need h > 0`);
     if (Math.abs(p.x) > W2 + p.w / 2 || Math.abs(p.y) > L2 + p.l / 2) err.push(`${name(p)}: entirely off the body`);
     if (!p.description.trim()) warn.push(`${name(p)}: no description`);
     if (p.kind === "pin" && p.functions.length === 0) warn.push(`${name(p)}: no pin_functions`);
+    if (p.shape === "hole") {
+      const r = (typeof p.props.drill === "number" ? p.props.drill : 1) / 2;
+      if (Math.abs(p.x) + r > W2 || Math.abs(p.y) + r > L2) err.push(`${name(p)}: hole cuts the body edge`);
+    }
     if (p.shape === "castellated") {
       const edge = Math.min(W2 - Math.abs(p.x), L2 - Math.abs(p.y));
       if (edge > 1.5) err.push(`${name(p)}: castellated pins must sit on an edge (centre is ${edge.toFixed(2)} mm in)`);
@@ -51,7 +56,8 @@ function check(d: Device): [string[], string[]] {
   for (let i = 0; i < pins.length; i++) {
     for (let j = i + 1; j < pins.length; j++) {
       const [a, b] = [pins[i], pins[j]];
-      const sameSide = a.side === b.side || a.shape === "castellated" || b.shape === "castellated";
+      const through = (p: Part) => p.shape === "castellated" || p.shape === "hole";
+      const sameSide = a.side === b.side || through(a) || through(b);
       if (sameSide && Math.hypot(a.x - b.x, a.y - b.y) < 1) err.push(`pins "${a.key}" and "${b.key}" overlap`);
     }
   }

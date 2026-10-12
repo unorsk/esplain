@@ -50,6 +50,7 @@ export interface Marking {
   y: number;
   size: number;
   rotation: number;
+  align: "start" | "center" | "end";
 }
 
 export interface Body {
