@@ -89,32 +89,37 @@ const COPPER = 0.04;
 /** Shapes that go through the board and are visible from both sides. */
 export const THROUGH = new Set(["castellated", "hole"]);
 
+/** Copper pad on both sides with a plated half hole on the nearest edge, in part-local coordinates. */
+function castellation(body: Body, p: Part, rect: [number, number, number, number]): THREE.Group {
+  const g = new THREE.Group();
+  const n = castellatedNotch(body, p);
+  const W2 = body.width / 2;
+  const L2 = body.length / 2;
+  // The pad rectangle is forced flush with the edge.
+  let [x0, x1, y0, y1] = rect;
+  if (n.edge === "left") x0 = -W2;
+  if (n.edge === "right") x1 = W2;
+  if (n.edge === "top") y1 = L2;
+  if (n.edge === "bottom") y0 = -L2;
+  const local = { ...n, at: n.at - (n.edge === "left" || n.edge === "right" ? p.y : p.x) };
+  const shape = notchedRect(x0 - p.x, x1 - p.x, y0 - p.y, y1 - p.y, 0, [local]);
+  const gold = mat.gold();
+  g.add(mesh(slab(shape, COPPER), gold));
+  g.add(mesh(slab(shape, COPPER), gold, -body.thickness - COPPER));
+  // Plating inside the half hole.
+  const cx = n.edge === "left" ? -W2 - p.x : n.edge === "right" ? W2 - p.x : local.at;
+  const cy = n.edge === "top" ? L2 - p.y : n.edge === "bottom" ? -L2 - p.y : local.at;
+  const start = { left: 0, right: Math.PI, top: -Math.PI / 2, bottom: Math.PI / 2 }[n.edge];
+  const barrel = new THREE.CylinderGeometry(n.r, n.r, body.thickness, 24, 1, true, start, Math.PI);
+  const b = mesh(barrel, new THREE.MeshStandardMaterial({ color: "#e2bd72", metalness: 1, roughness: 0.3, side: THREE.DoubleSide }));
+  b.position.set(cx, -body.thickness / 2, -cy);
+  g.add(b);
+  return g;
+}
+
 const builders: Record<Shape, Builder> = {
   castellated(p, body) {
-    const g = new THREE.Group();
-    const n = castellatedNotch(body, p);
-    const W2 = body.width / 2;
-    const L2 = body.length / 2;
-    // Pad rectangle, forced flush with the edge, in coordinates relative to the part.
-    let [x0, x1, y0, y1] = [p.x - p.w / 2, p.x + p.w / 2, p.y - p.l / 2, p.y + p.l / 2];
-    if (n.edge === "left") x0 = -W2;
-    if (n.edge === "right") x1 = W2;
-    if (n.edge === "top") y1 = L2;
-    if (n.edge === "bottom") y0 = -L2;
-    const local = { ...n, at: n.at - (n.edge === "left" || n.edge === "right" ? p.y : p.x) };
-    const shape = notchedRect(x0 - p.x, x1 - p.x, y0 - p.y, y1 - p.y, 0, [local]);
-    const gold = mat.gold();
-    g.add(mesh(slab(shape, COPPER), gold));
-    g.add(mesh(slab(shape, COPPER), gold, -body.thickness - COPPER));
-    // Plating inside the half hole.
-    const cx = n.edge === "left" ? -W2 - p.x : n.edge === "right" ? W2 - p.x : local.at;
-    const cy = n.edge === "top" ? L2 - p.y : n.edge === "bottom" ? -L2 - p.y : local.at;
-    const start = { left: 0, right: Math.PI, top: -Math.PI / 2, bottom: Math.PI / 2 }[n.edge];
-    const barrel = new THREE.CylinderGeometry(n.r, n.r, body.thickness, 24, 1, true, start, Math.PI);
-    const b = mesh(barrel, new THREE.MeshStandardMaterial({ color: "#e2bd72", metalness: 1, roughness: 0.3, side: THREE.DoubleSide }));
-    b.position.set(cx, -body.thickness / 2, -cy);
-    g.add(b);
-    return g;
+    return castellation(body, p, [p.x - p.w / 2, p.x + p.w / 2, p.y - p.l / 2, p.y + p.l / 2]);
   },
 
   hole(p, body) {
@@ -137,6 +142,18 @@ const builders: Record<Shape, Builder> = {
       side: THREE.DoubleSide,
     });
     g.add(mesh(new THREE.CylinderGeometry(r, r, t, 32, 1, true).translate(0, -t / 2, 0), wall));
+    if (p.props.edge) {
+      // Also castellated: a pad runs from the hole to a half hole on the nearest edge.
+      const half = (Math.min(p.w, p.l) / 2) * 0.8;
+      const { edge } = nearestEdge(body, p.x, p.y);
+      const rect: Record<Edge, [number, number, number, number]> = {
+        left: [p.x - r - 1, p.x - r, p.y - half, p.y + half],
+        right: [p.x + r, p.x + r + 1, p.y - half, p.y + half],
+        top: [p.x - half, p.x + half, p.y + r, p.y + r + 1],
+        bottom: [p.x - half, p.x + half, p.y - r - 1, p.y - r],
+      };
+      g.add(castellation(body, p, rect[edge]));
+    }
     return g;
   },
 
@@ -339,7 +356,9 @@ const builders: Record<Shape, Builder> = {
 function buildBody(device: Device): THREE.Group {
   const { body } = device;
   const g = new THREE.Group();
-  const notches = device.parts.filter((p) => p.shape === "castellated").map((p) => castellatedNotch(body, p));
+  const notches = device.parts
+    .filter((p) => p.shape === "castellated" || (p.shape === "hole" && p.props.edge))
+    .map((p) => castellatedNotch(body, p));
   const W2 = body.width / 2;
   const L2 = body.length / 2;
   const shape = notchedRect(-W2, W2, -L2, L2, body.cornerRadius, notches);
