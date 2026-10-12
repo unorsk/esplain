@@ -42,7 +42,7 @@ function check(d: Device): [string[], string[]] {
     if (Math.abs(p.x) > W2 + p.w / 2 || Math.abs(p.y) > L2 + p.l / 2) err.push(`${name(p)}: entirely off the body`);
     if (!p.description.trim()) warn.push(`${name(p)}: no description`);
     if (p.kind === "pin" && p.functions.length === 0) warn.push(`${name(p)}: no pin_functions`);
-    if (p.shape === "hole") {
+    if (p.shape === "hole" && !p.props.edge) {
       const r = (typeof p.props.drill === "number" ? p.props.drill : 1) / 2;
       if (Math.abs(p.x) + r > W2 || Math.abs(p.y) + r > L2) err.push(`${name(p)}: hole cuts the body edge`);
     }

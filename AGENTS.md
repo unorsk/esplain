@@ -50,7 +50,7 @@ Deleting a device cascades to all of its rows, so a device script can start with
 | shape | use | geometry | props |
 |---|---|---|---|
 | `castellated` | half-hole edge pin | pad rectangle; it is forced flush with the nearest edge, and the half hole sits on that edge at the pad's centre line | `drill` (mm, default 1.0) |
-| `hole` | through-hole pin or mounting hole | `w` = annular ring diameter; the board gets a matching cut-out | `drill` (mm, default 1.0), `plated: false` for a bare mounting hole |
+| `hole` | through-hole pin or mounting hole | `w` = annular ring diameter; the board gets a matching cut-out | `drill` (mm, default 1.0), `plated: false` for a bare mounting hole, `edge: true` when the hole is also joined by a pad to a castellated half hole on the nearest edge (FireBeetle 2 style) |
 | `pad` | SMD / test pad | `w × l` | `round: true` gives a circle or stadium; `radius` sets the corner radius |
 | `usb_c` | USB-C receptacle | `w × l × h`, opening faces +y at rotation 0 | |
 | `button` | top-pressed SMD tact switch | `w × l × h` | `cap_ratio` (0.6), `cap_color`, `body_color` |
@@ -68,7 +68,11 @@ Unknown shapes render as `box`, and `npm run check` flags them. To add a shape, 
 
 ## Adding a device
 
-1. **Gather sources.** Ask the user for the vendor pinout image, the product page specs and photos rather than doing lengthy web searches. A top-down pinout diagram is the best source for geometry. For pin facts, prefer primary sources: the vendor wiki, the board's Arduino variant `pins_arduino.h` (`raw.githubusercontent.com/espressif/arduino-esp32/master/variants/<BOARD>/pins_arduino.h`), and ESP-IDF docs (`raw.githubusercontent.com/espressif/esp-idf/master/docs/en/api-reference/peripherals/gpio/<chip>.inc`).
+1. **Gather sources.** Ask the user for the vendor pinout image, the product page specs and photos rather than doing lengthy web searches. Ask for the **dimension drawing and the schematic up front**; vendor download hosts are often unreachable from a cloud session, but the user can attach them.
+   - The dimension drawing is the authority for geometry. Rendered pinouts can be off: the FireBeetle 2 hole rows measured 23.6 mm apart on the render, while the drawing says 22.86 mm (0.9").
+   - The schematic is the authority for what parts are, LED colours, pull-ups and series resistors, power paths and protection. It turns "unidentified" parts into explained ones.
+   - Rasterise a PDF with `pdftoppm -r 600 -png file.pdf out`, then crop the regions you need.
+   - For pin facts, also use the board's Arduino variant `pins_arduino.h` (`raw.githubusercontent.com/espressif/arduino-esp32/master/variants/<BOARD>/pins_arduino.h`) and the ESP-IDF docs (`raw.githubusercontent.com/espressif/esp-idf/master/docs/en/api-reference/peripherals/gpio/<chip>.inc`).
 2. **Check existing vocabulary** so the device compares cleanly with the others:
    ```sh
    npm run sql -- "SELECT key, label, unit, hint FROM spec_keys ORDER BY sort"
@@ -92,6 +96,7 @@ Unknown shapes render as `box`, and `npm run check` flags them. To add a shape, 
 - Not-connected pins are still pins: give them the `NC` function (category `other`) and say so in the description.
 - Pins shared with an on-board connector (the FireBeetle GDI display port, for example) must say so in their description, with the connector's signal name.
 - Visible parts nobody documents may still be added when they matter for the look. Put them in `group_name = 'Unidentified'` and say plainly in the description that they are unidentified.
+- When the schematic names a part but the drawing doesn't say which footprint it is (two identical diodes, three SOT-23 MOSFETs), describe the set in each and say that the drawing doesn't say which is which. Don't guess.
 - `group_name`: physical grouping such as `Left edge`, `Right edge`, `Back pads` or `J1 header`. Set `sort` so the list follows the physical order (top to bottom within each group).
 - `pin_functions` order: board name first (`D0`), then GPIO (`GPIO1`), then peripheral roles (`A0`, `SDA`, `TX`, `MOSI`), then LP and other names. Add `STRAP` (category `boot`) to every strapping pin. Power pins get `power`, ground pins `gnd`.
 - `specs.value` is what a person reads ("8 MB", "Yes (2.4 + 5 GHz)"). `num` must be set whenever `spec_keys.unit` is set, and it must be in that unit. Booleans are stored as "Yes …"/"No" with `num` 1/0.
