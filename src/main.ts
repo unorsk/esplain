@@ -152,7 +152,7 @@ function renderDevice(slug: string, partKey: string | null) {
             <button data-view="top">Top</button>
             <button data-view="bottom">Bottom</button>
           </div>
-          <label class="check"><input type="checkbox" id="labels" checked> Pin labels</label>
+          <label class="check"><input type="checkbox" id="labels"> Pin labels</label>
         </div>
         <div class="legend">${legend}</div>
       </section>

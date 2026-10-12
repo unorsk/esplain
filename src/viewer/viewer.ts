@@ -31,7 +31,7 @@ export class Viewer {
   private hits: THREE.Object3D[];
   private hovered: string | null = null;
   private selected: string | null = null;
-  private showLabels = true;
+  private showLabels = false;
   private distance = 1;
   private tween: { from: THREE.Spherical; to: THREE.Spherical; t0: number } | null = null;
   private resizeObserver: ResizeObserver;
