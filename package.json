@@ -1,0 +1,30 @@
+{
+  "name": "esplain",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "kysely": "0.29.6",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/three": "0.186.0",
+    "dbmate": "2.36.0",
+    "esbuild": "0.28.2",
+    "playwright-core": "1.64.0",
+    "typescript": "7.0.2"
+  },
+  "scripts": {
+    "dev": "node --disable-warning=ExperimentalWarning scripts/dev.ts",
+    "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
+    "typecheck": "tsc",
+    "db:migrate": "dbmate up",
+    "db:new": "dbmate new",
+    "sql": "node --disable-warning=ExperimentalWarning scripts/sql.ts",
+    "check": "node --disable-warning=ExperimentalWarning scripts/check.ts",
+    "shot": "node --disable-warning=ExperimentalWarning scripts/shot.ts"
+  }
+}
