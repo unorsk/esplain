@@ -117,6 +117,49 @@ function castellation(body: Body, p: Part, rect: [number, number, number, number
   return g;
 }
 
+/** Metal can (RF shield) with an optional printed label on top, sitting on y = 0. */
+function metalCan(w: number, h: number, l: number, props: Record<string, unknown>): THREE.Group {
+  const g = new THREE.Group();
+  g.add(mesh(new RoundedBoxGeometry(w, h, l, 3, 0.2).translate(0, h / 2, 0), mat.tin()));
+  const text = str(props.label, "");
+  if (text) {
+    const inset = num(props.label_inset, 0.5);
+    const bg = typeof props.label_bg === "string" ? props.label_bg : null;
+    const tex = labelTexture(w - inset * 2, l - inset * 2, text, bg, str(props.label_fg, "#1c1c1e"));
+    const m = new THREE.MeshStandardMaterial({ map: tex, transparent: !bg, roughness: 0.6, metalness: 0 });
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(w - inset * 2, l - inset * 2).rotateX(-Math.PI / 2), m);
+    plane.position.y = h + 0.01;
+    plane.receiveShadow = true;
+    g.add(plane);
+  }
+  return g;
+}
+
+/** Meander trace filling w × l, sitting on y = 0. */
+function meander(w: number, l: number, h: number, turns: number, trace: number, m: THREE.Material): THREE.Group {
+  const g = new THREE.Group();
+  const cols = turns * 2 + 1;
+  const step = (w - trace) / (cols - 1);
+  for (let i = 0; i < cols; i++) {
+    const x = -w / 2 + trace / 2 + i * step;
+    g.add(mesh(new THREE.BoxGeometry(trace, h, l).translate(x, h / 2, 0), m));
+    if (i === cols - 1) break;
+    const z = (i % 2 === 0 ? -1 : 1) * (l / 2 - trace / 2);
+    g.add(mesh(new THREE.BoxGeometry(step, h, trace).translate(x + step / 2, h / 2, z), m));
+  }
+  return g;
+}
+
+/** Antenna copper under soldermask of the given colour. */
+function maskedCopper(color: string): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(color).lerp(new THREE.Color("#ffffff"), 0.06),
+    roughness: 0.45,
+    clearcoat: 0.15,
+    envMapIntensity: 0.3,
+  });
+}
+
 const builders: Record<Shape, Builder> = {
   castellated(p, body) {
     return castellation(body, p, [p.x - p.w / 2, p.x + p.w / 2, p.y - p.l / 2, p.y + p.l / 2]);
@@ -234,22 +277,39 @@ const builders: Record<Shape, Builder> = {
   },
 
   shield(p) {
+    return metalCan(p.w, p.h, p.l, p.props);
+  },
+
+  module(p) {
+    // Radio module (ESP32-WROOM style): castellated PCB, metal can, PCB antenna at the +y end at rotation 0.
     const g = new THREE.Group();
-    const box = new RoundedBoxGeometry(p.w, p.h, p.l, 3, 0.2).translate(0, p.h / 2, 0);
-    g.add(mesh(box, mat.tin()));
-    const text = str(p.props.label, "");
-    if (text) {
-      const inset = num(p.props.label_inset, 0.5);
-      const w = p.w - inset * 2;
-      const l = p.l - inset * 2;
-      const bg = typeof p.props.label_bg === "string" ? p.props.label_bg : null;
-      const tex = labelTexture(w, l, text, bg, str(p.props.label_fg, "#1c1c1e"));
-      const m = new THREE.MeshStandardMaterial({ map: tex, transparent: !bg, roughness: 0.6, metalness: 0 });
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(w, l).rotateX(-Math.PI / 2), m);
-      plane.position.y = p.h + 0.01;
-      plane.receiveShadow = true;
-      g.add(plane);
+    const pcbH = num(p.props.pcb_h, 0.8);
+    const antL = num(p.props.antenna_l, 6);
+    const pcbColor = str(p.props.pcb_color, "#1d1d20");
+    g.add(mesh(new THREE.BoxGeometry(p.w, pcbH, p.l).translate(0, pcbH / 2, 0), mat.plastic(pcbColor)));
+    // Castellated pads: both long sides and the end opposite the antenna, at 1.27 mm pitch.
+    const [side, end] = [num(p.props.side_pads, 14), num(p.props.end_pads, 10)];
+    const pitch = 1.27;
+    const gold = mat.gold();
+    const pad = (x: number, y: number, along: "x" | "y") => {
+      const geo = along === "y" ? new THREE.BoxGeometry(0.5, pcbH + 0.04, 0.9) : new THREE.BoxGeometry(0.9, pcbH + 0.04, 0.5);
+      g.add(mesh(geo.translate(x, (pcbH + 0.04) / 2, -y), gold));
+    };
+    for (let i = 0; i < side; i++) {
+      const y = -p.l / 2 + 1.5 + i * pitch;
+      pad(-p.w / 2 + 0.2, y, "y");
+      pad(p.w / 2 - 0.2, y, "y");
     }
+    for (let i = 0; i < end; i++) pad((i - (end - 1) / 2) * pitch, -p.l / 2 + 0.2, "x");
+    // Metal can over the radio, leaving the antenna end bare.
+    const canW = num(p.props.can_w, p.w - 2.2);
+    const canL = num(p.props.can_l, p.l - antL - 1.2);
+    const can = metalCan(canW, p.h - pcbH, canL, p.props);
+    can.position.set(0, pcbH, -(-p.l / 2 + 0.6 + canL / 2));
+    g.add(can);
+    const ant = meander(p.w - 3, antL - 1.4, 0.035, num(p.props.antenna_turns, 4), 0.5, maskedCopper(pcbColor));
+    ant.position.set(0, pcbH, -(p.l / 2 - antL / 2));
+    g.add(ant);
     return g;
   },
 
@@ -305,6 +365,20 @@ const builders: Record<Shape, Builder> = {
   chip(p) {
     const g = new THREE.Group();
     g.add(mesh(new THREE.BoxGeometry(p.w, p.h, p.l).translate(0, p.h / 2, 0), mat.plastic(str(p.props.color, "#1e1e20"))));
+    // Gull-wing leads on the two sides facing ±y (or ±x with pins_axis "x").
+    const pins = num(p.props.pins, 0);
+    const pitch = num(p.props.pitch, 1.27);
+    const alongX = p.props.pins_axis !== "x";
+    for (let i = 0; i < pins; i++) {
+      const at = (i - (pins - 1) / 2) * pitch;
+      for (const s of [-1, 1]) {
+        const reach = 0.9;
+        const geo = alongX ? new THREE.BoxGeometry(0.42, 0.2, reach) : new THREE.BoxGeometry(reach, 0.2, 0.42);
+        const off = (alongX ? p.l : p.w) / 2 + reach / 2 - 0.15;
+        geo.translate(alongX ? at : s * off, 0.1, alongX ? -s * off : -at);
+        g.add(mesh(geo, mat.tin()));
+      }
+    }
     const text = str(p.props.text, "");
     if (text) {
       const tex = labelTexture(p.w, p.l, text, null, str(p.props.text_color, "#b8b8b8"));
@@ -320,25 +394,8 @@ const builders: Record<Shape, Builder> = {
 
   antenna(p, body) {
     // PCB meander antenna: copper under the soldermask, so slightly raised and lighter.
-    const g = new THREE.Group();
-    const m = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(body.color).lerp(new THREE.Color("#ffffff"), 0.06),
-      roughness: 0.45,
-      clearcoat: 0.15,
-      envMapIntensity: 0.3,
-    });
-    const t = num(p.props.trace, 0.5);
-    const cols = num(p.props.turns, 5) * 2 + 1;
     const h = Math.max(p.h, 0.03);
-    const step = (p.w - t) / (cols - 1);
-    for (let i = 0; i < cols; i++) {
-      const x = -p.w / 2 + t / 2 + i * step;
-      g.add(mesh(new THREE.BoxGeometry(t, h, p.l).translate(x, h / 2, 0), m));
-      if (i === cols - 1) break;
-      const z = (i % 2 === 0 ? -1 : 1) * (p.l / 2 - t / 2);
-      g.add(mesh(new THREE.BoxGeometry(step, h, t).translate(x + step / 2, h / 2, z), m));
-    }
-    return g;
+    return meander(p.w, p.l, h, num(p.props.turns, 5), num(p.props.trace, 0.5), maskedCopper(body.color));
   },
 
   box(p) {

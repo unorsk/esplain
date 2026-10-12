@@ -8,6 +8,7 @@ export const SHAPES = [
   "side_button",
   "led",
   "shield",
+  "module",
   "ufl",
   "jst",
   "fpc",
