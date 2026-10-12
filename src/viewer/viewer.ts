@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { Device } from "../types.ts";
-import { buildModel, setHighlight, type Model } from "./model.ts";
+import { THROUGH, buildModel, setHighlight, type Model } from "./model.ts";
 
 export type View = "angle" | "top" | "bottom";
 
@@ -179,7 +179,7 @@ export class Viewer {
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
     const fit = radius / Math.sin(Math.min(vfov, hfov) / 2);
     const ratio = this.camera.position.length() / this.distance;
-    this.distance = fit * 0.92;
+    this.distance = fit * 1.02;
     this.camera.near = this.distance / 100;
     this.camera.far = this.distance * 10;
     this.camera.updateProjectionMatrix();
@@ -215,7 +215,7 @@ export class Viewer {
     const v = new THREE.Vector3();
     for (const [key, el] of this.labels) {
       const po = this.model.parts.get(key)!;
-      const facing = po.part.shape === "castellated" || (po.part.side === "top") === fromAbove;
+      const facing = THROUGH.has(po.part.shape) || (po.part.side === "top") === fromAbove;
       const visible = (this.showLabels && facing) || key === this.selected;
       el.hidden = !visible;
       if (!visible) continue;

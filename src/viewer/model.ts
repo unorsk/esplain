@@ -86,6 +86,9 @@ type Builder = (p: Part, body: Body) => THREE.Object3D;
 
 const COPPER = 0.04;
 
+/** Shapes that go through the board and are visible from both sides. */
+export const THROUGH = new Set(["castellated", "hole"]);
+
 const builders: Record<Shape, Builder> = {
   castellated(p, body) {
     const g = new THREE.Group();
@@ -111,6 +114,29 @@ const builders: Record<Shape, Builder> = {
     const b = mesh(barrel, new THREE.MeshStandardMaterial({ color: "#e2bd72", metalness: 1, roughness: 0.3, side: THREE.DoubleSide }));
     b.position.set(cx, -body.thickness / 2, -cy);
     g.add(b);
+    return g;
+  },
+
+  hole(p, body) {
+    // Through hole; the body outline gets the matching cut-out in buildBody.
+    const g = new THREE.Group();
+    const r = num(p.props.drill, 1) / 2;
+    const t = body.thickness;
+    const plated = p.props.plated !== false;
+    if (plated) {
+      const ring = new THREE.Shape().absarc(0, 0, Math.min(p.w, p.l) / 2, 0, Math.PI * 2, false);
+      ring.holes.push(new THREE.Path().absarc(0, 0, r, 0, Math.PI * 2, true));
+      const gold = mat.gold();
+      g.add(mesh(slab(ring, COPPER), gold));
+      g.add(mesh(slab(ring, COPPER), gold, -t - COPPER));
+    }
+    const wall = new THREE.MeshStandardMaterial({
+      color: plated ? "#d9b26a" : "#8c8268",
+      metalness: plated ? 1 : 0,
+      roughness: plated ? 0.35 : 0.9,
+      side: THREE.DoubleSide,
+    });
+    g.add(mesh(new THREE.CylinderGeometry(r, r, t, 32, 1, true).translate(0, -t / 2, 0), wall));
     return g;
   },
 
@@ -154,6 +180,19 @@ const builders: Record<Shape, Builder> = {
     return g;
   },
 
+  side_button(p) {
+    // Side-actuated tact switch; the actuator points +y at rotation 0.
+    const g = new THREE.Group();
+    const baseH = p.h * 0.35;
+    g.add(mesh(new THREE.BoxGeometry(p.w, baseH, p.l).translate(0, baseH / 2, 0), mat.plastic(str(p.props.body_color, "#1b1b1d"))));
+    const shell = new RoundedBoxGeometry(p.w, p.h - baseH, p.l, 2, 0.08).translate(0, baseH + (p.h - baseH) / 2, 0);
+    g.add(mesh(shell, mat.steel()));
+    const reach = num(p.props.reach, 0.8);
+    const act = new THREE.BoxGeometry(p.w * 0.4, p.h * 0.5, reach + 0.2).translate(0, p.h * 0.5, -p.l / 2 - reach / 2 + 0.1);
+    g.add(mesh(act, mat.plastic(str(p.props.cap_color, "#e9e7e2"))));
+    return g;
+  },
+
   led(p) {
     const g = new THREE.Group();
     const color = str(p.props.color, "#ff3b30");
@@ -162,7 +201,7 @@ const builders: Record<Shape, Builder> = {
     const lens = new THREE.MeshPhysicalMaterial({
       color,
       emissive: color,
-      emissiveIntensity: 0.35,
+      emissiveIntensity: p.props.lit === false ? 0 : 0.35,
       roughness: 0.15,
       clearcoat: 1,
     });
@@ -207,6 +246,45 @@ const builders: Record<Shape, Builder> = {
     return g;
   },
 
+  jst(p) {
+    // Wire-to-board connector housing (JST PH style); the mating opening faces +y at rotation 0.
+    const g = new THREE.Group();
+    const wall = 0.5;
+    const front = notchedRect(-p.w / 2, p.w / 2, 0, p.h, 0, []);
+    front.holes.push(notchedRect(-p.w / 2 + wall, p.w / 2 - wall, wall + 0.6, p.h - wall, 0, []));
+    const plastic = mat.plastic(str(p.props.color, "#efe8d6"));
+    const housing = new THREE.ExtrudeGeometry(front, { depth: p.l, bevelEnabled: false }).translate(0, 0, -p.l / 2);
+    g.add(mesh(housing, plastic));
+    g.add(mesh(new THREE.BoxGeometry(p.w, p.h, 0.8).translate(0, p.h / 2, p.l / 2 - 0.4), plastic));
+    const n = num(p.props.pins, 2);
+    const pitch = num(p.props.pitch, 2);
+    const lead = num(p.props.lead, 2);
+    for (let i = 0; i < n; i++) {
+      const x = (i - (n - 1) / 2) * pitch;
+      g.add(mesh(new THREE.BoxGeometry(0.5, 0.5, p.l * 0.7).translate(x, p.h * 0.5, p.l * 0.15), mat.gold()));
+      g.add(mesh(new THREE.BoxGeometry(0.7, 0.2, lead).translate(x, 0.1, p.l / 2 + lead / 2), mat.tin()));
+    }
+    return g;
+  },
+
+  fpc(p) {
+    // ZIF connector for flat flex cables; contacts along the +y side at rotation 0.
+    const g = new THREE.Group();
+    const bodyL = p.l * 0.7;
+    const housing = new THREE.BoxGeometry(p.w, p.h, bodyL).translate(0, p.h / 2, p.l / 2 - bodyL / 2);
+    g.add(mesh(housing, mat.plastic(str(p.props.color, "#1b1b1d"))));
+    const slot = new THREE.BoxGeometry(p.w * 0.9, 0.06, bodyL * 0.4).translate(0, p.h + 0.03, p.l / 2 - bodyL * 0.45);
+    g.add(mesh(slot, mat.plastic(str(p.props.slot_color, "#e8e2d2"))));
+    const n = num(p.props.pins, 18);
+    const pitch = num(p.props.pitch, 0.5);
+    const leadL = p.l - bodyL + 0.3;
+    for (let i = 0; i < n; i++) {
+      const x = (i - (n - 1) / 2) * pitch;
+      g.add(mesh(new THREE.BoxGeometry(pitch * 0.5, 0.12, leadL).translate(x, 0.06, -p.l / 2 + leadL / 2), mat.gold()));
+    }
+    return g;
+  },
+
   chip(p) {
     const g = new THREE.Group();
     g.add(mesh(new THREE.BoxGeometry(p.w, p.h, p.l).translate(0, p.h / 2, 0), mat.plastic(str(p.props.color, "#1e1e20"))));
@@ -219,6 +297,29 @@ const builders: Record<Shape, Builder> = {
       );
       plane.position.y = p.h + 0.005;
       g.add(plane);
+    }
+    return g;
+  },
+
+  antenna(p, body) {
+    // PCB meander antenna: copper under the soldermask, so slightly raised and lighter.
+    const g = new THREE.Group();
+    const m = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(body.color).lerp(new THREE.Color("#ffffff"), 0.06),
+      roughness: 0.45,
+      clearcoat: 0.15,
+      envMapIntensity: 0.3,
+    });
+    const t = num(p.props.trace, 0.5);
+    const cols = num(p.props.turns, 5) * 2 + 1;
+    const h = Math.max(p.h, 0.03);
+    const step = (p.w - t) / (cols - 1);
+    for (let i = 0; i < cols; i++) {
+      const x = -p.w / 2 + t / 2 + i * step;
+      g.add(mesh(new THREE.BoxGeometry(t, h, p.l).translate(x, h / 2, 0), m));
+      if (i === cols - 1) break;
+      const z = (i % 2 === 0 ? -1 : 1) * (p.l / 2 - t / 2);
+      g.add(mesh(new THREE.BoxGeometry(step, h, t).translate(x + step / 2, h / 2, z), m));
     }
     return g;
   },
@@ -242,6 +343,10 @@ function buildBody(device: Device): THREE.Group {
   const W2 = body.width / 2;
   const L2 = body.length / 2;
   const shape = notchedRect(-W2, W2, -L2, L2, body.cornerRadius, notches);
+  for (const p of device.parts) {
+    if (p.shape !== "hole") continue;
+    shape.holes.push(new THREE.Path().absarc(p.x, p.y, num(p.props.drill, 1) / 2, 0, Math.PI * 2, true));
+  }
   const geo = slab(shape, body.thickness).translate(0, -body.thickness, 0);
   const mask = new THREE.MeshPhysicalMaterial({
     color: body.color,
@@ -348,7 +453,7 @@ export function buildModel(device: Device): Model {
     root.add(hit);
 
     const anchor = center.clone();
-    if (p.shape !== "castellated") anchor.y = p.side === "top" ? box.max.y : box.min.y;
+    if (!THROUGH.has(p.shape)) anchor.y = p.side === "top" ? box.max.y : box.min.y;
     parts.set(p.key, { part: p, object: outer, hit, anchor, materials });
   }
 

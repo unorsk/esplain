@@ -71,7 +71,8 @@ CREATE TABLE markings (
   y REAL NOT NULL,
   size REAL NOT NULL DEFAULT 1,
   rotation REAL NOT NULL DEFAULT 0
-);
+, align TEXT NOT NULL DEFAULT 'center' CHECK (align IN ('start', 'center', 'end')));
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
-  ('20261012000000');
+  ('20261012000000'),
+  ('20261012102922');

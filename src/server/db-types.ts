@@ -75,6 +75,7 @@ export interface MarkingsTable {
   y: number;
   size: Generated<number>;
   rotation: Generated<number>;
+  align: Generated<"start" | "center" | "end">;
 }
 
 export interface DB {
